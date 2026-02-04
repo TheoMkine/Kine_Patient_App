@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { listFilesInFolder, uploadFileToDrive } from '../services/driveService';
+import { listFilesInFolder, uploadFileToDrive, getFileUrl } from '../services/driveService';
 
 // Local metadata for grouped bilans: one bilan can contain several photos
 const getBilansMetaKey = (patientId) => `bilans_meta_${patientId}`;
@@ -32,6 +32,245 @@ const formatDateForName = (date) => {
     const year = d.getFullYear();
     return `${day}_${month}_${year}`;
 };
+
+const createImagePreview = (file) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            resolve(reader.result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+};
+
+// Add Bilan Form Component
+function AddBilanForm({ patient, onClose, onBilanAdded }) {
+    const [title, setTitle] = useState('');
+    const [photos, setPhotos] = useState([]);
+    const [photoPreviews, setPhotoPreviews] = useState([]);
+    const [uploading, setUploading] = useState(false);
+    const [error, setError] = useState('');
+
+    const handlePhotosChange = async (e) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        const newPreviews = await Promise.all(files.map(createImagePreview));
+
+        setPhotos(prev => [...prev, ...files]);
+        setPhotoPreviews(prev => [...prev, ...newPreviews]);
+        setError('');
+    };
+
+    const removePhoto = (index) => {
+        setPhotos(prev => prev.filter((_, i) => i !== index));
+        setPhotoPreviews(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        if (!title.trim()) {
+            setError('Le titre du bilan est obligatoire');
+            return;
+        }
+
+        if (photos.length === 0) {
+            setError('Ajoutez au moins une photo');
+            return;
+        }
+
+        setUploading(true);
+        try {
+            const now = new Date();
+            const dateName = formatDateForName(now);
+            const safeTitle = sanitizeTitleForFileName(title) || 'bilan';
+            const fileNameBase = `${dateName}_${safeTitle}`;
+
+            // Upload all photos in parallel
+            const uploadResults = await Promise.all(
+                photos.map((file, index) =>
+                    uploadFileToDrive(
+                        file,
+                        patient.bilansFolderId,
+                        `${fileNameBase}_${index + 1}.jpg`,
+                    ),
+                ),
+            );
+
+            // Save meta
+            const existing = getBilansMeta(patient.id);
+            const newBilan = {
+                id: Date.now().toString(),
+                title: title.trim(),
+                date: now.toISOString(),
+                fileIds: uploadResults.map((r) => r.id),
+            };
+            saveBilansMeta(patient.id, [...existing, newBilan]);
+
+            onBilanAdded();
+            onClose();
+        } catch (error) {
+            console.error('Error adding bilan:', error);
+            setError('Erreur lors de l\'ajout du bilan. Vérifiez votre connexion.');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <div style={{ padding: 'var(--spacing-lg)' }}>
+                    <h2 style={{ marginBottom: 'var(--spacing-lg)', fontSize: 'var(--font-size-xl)' }}>
+                        Nouveau Bilan
+                    </h2>
+
+                    <form onSubmit={handleSubmit}>
+                        <div className="form-group">
+                            <label className="form-label" htmlFor="bilan-title">
+                                Titre du bilan *
+                            </label>
+                            <input
+                                id="bilan-title"
+                                type="text"
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                placeholder="Exemple : Lombalgie"
+                                disabled={uploading}
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label">Photos *</label>
+
+                            {photos.length === 0 ? (
+                                <label className="btn btn-secondary btn-full" style={{ cursor: 'pointer' }}>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        capture="environment"
+                                        multiple
+                                        onChange={handlePhotosChange}
+                                        disabled={uploading}
+                                        style={{ display: 'none' }}
+                                    />
+                                    📷 Ajouter des photos
+                                </label>
+                            ) : (
+                                <div>
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                                        gap: '8px',
+                                        marginBottom: '8px'
+                                    }}>
+                                        {photoPreviews.map((preview, index) => (
+                                            <div key={index} style={{ position: 'relative', aspectRatio: '1' }}>
+                                                <img
+                                                    src={preview}
+                                                    alt={`Preview ${index}`}
+                                                    style={{
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        objectFit: 'cover',
+                                                        borderRadius: 'var(--radius-sm)'
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removePhoto(index)}
+                                                    style={{
+                                                        position: 'absolute',
+                                                        top: '-5px',
+                                                        right: '-5px',
+                                                        background: 'red',
+                                                        color: 'white',
+                                                        borderRadius: '50%',
+                                                        width: '20px',
+                                                        height: '20px',
+                                                        border: 'none',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        cursor: 'pointer',
+                                                        fontSize: '12px'
+                                                    }}
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <label
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                background: 'var(--bg-secondary)',
+                                                borderRadius: 'var(--radius-sm)',
+                                                cursor: 'pointer',
+                                                aspectRatio: '1',
+                                                fontSize: '24px'
+                                            }}
+                                        >
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                capture="environment"
+                                                multiple
+                                                onChange={handlePhotosChange}
+                                                disabled={uploading}
+                                                style={{ display: 'none' }}
+                                            />
+                                            +
+                                        </label>
+                                    </div>
+                                    <p className="text-secondary text-sm">
+                                        📷 {photos.length} photo{photos.length > 1 ? 's' : ''} sélectionnée{photos.length > 1 ? 's' : ''}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        {error && (
+                            <div className="form-error" style={{ marginBottom: 'var(--spacing-md)' }}>
+                                {error}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="btn btn-secondary"
+                                disabled={uploading}
+                                style={{ flex: 1 }}
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                type="submit"
+                                className="btn btn-primary"
+                                disabled={uploading}
+                                style={{ flex: 1 }}
+                            >
+                                {uploading ? (
+                                    <div
+                                        className="spinner"
+                                        style={{ width: '20px', height: '20px', borderWidth: '2px' }}
+                                    />
+                                ) : (
+                                    'Enregistrer'
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default function BilansList({ patient }) {
     const [bilans, setBilans] = useState([]); // grouped bilans
@@ -183,9 +422,19 @@ export default function BilansList({ patient }) {
             {/* Bilan Modal with all photos */}
             {selectedBilan && (
                 <div className="modal-overlay" onClick={() => setSelectedBilan(null)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <div style={{ padding: 'var(--spacing-lg)' }}>
-                            <h3 style={{ marginBottom: 'var(--spacing-md)' }}>
+                    <div
+                        className="modal-content"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ maxWidth: '900px', width: '100%' }}
+                    >
+                        <div style={{
+                            padding: 'var(--spacing-lg)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: 'var(--spacing-md)'
+                        }}>
+                            <h3 style={{ marginBottom: 0 }}>
                                 {selectedBilan.title || 'Bilan'} –{' '}
                                 {new Date(selectedBilan.createdAt).toLocaleDateString('fr-FR', {
                                     day: 'numeric',
@@ -193,10 +442,22 @@ export default function BilansList({ patient }) {
                                     year: 'numeric',
                                 })}
                             </h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+
+                            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--spacing-lg)' }}>
                                 {selectedBilan.files.map((file) => (
-                                    <div key={file.id} className="image-preview">
-                                        <img src={file.thumbnailLink} alt={file.name} />
+                                    <div key={file.id} style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+                                        <img
+                                            src={getFileUrl(file.id)}
+                                            alt={file.name}
+                                            loading="lazy"
+                                            style={{
+                                                width: '100%',
+                                                maxWidth: '700px',
+                                                maxHeight: '80vh',
+                                                objectFit: 'contain',
+                                                borderRadius: 'var(--radius-sm)'
+                                            }}
+                                        />
                                     </div>
                                 ))}
                             </div>
@@ -204,7 +465,8 @@ export default function BilansList({ patient }) {
                             {selectedBilan.files[0]?.webViewLink && (
                                 <button
                                     onClick={() => window.open(selectedBilan.files[0].webViewLink, '_blank')}
-                                    className="btn btn-secondary btn-full mt-md"
+                                    className="btn btn-secondary"
+                                    style={{ width: '100%', marginTop: 'var(--spacing-md)' }}
                                 >
                                     Ouvrir dans Drive
                                 </button>
@@ -212,7 +474,8 @@ export default function BilansList({ patient }) {
 
                             <button
                                 onClick={() => setSelectedBilan(null)}
-                                className="btn btn-primary btn-full mt-md"
+                                className="btn btn-primary"
+                                style={{ width: '100%' }}
                             >
                                 Fermer
                             </button>
@@ -222,163 +485,6 @@ export default function BilansList({ patient }) {
             )}
         </div>
     );
-}
 
-// Add Bilan Form Component
-function AddBilanForm({ patient, onClose, onBilanAdded }) {
-    const [title, setTitle] = useState('');
-    const [photos, setPhotos] = useState([]);
-    const [photoPreview, setPhotoPreview] = useState(null);
-    const [uploading, setUploading] = useState(false);
-    const [error, setError] = useState('');
 
-    const handlePhotosChange = (e) => {
-        const files = Array.from(e.target.files || []);
-        setPhotos(files);
-        setError('');
-
-        if (files[0]) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setPhotoPreview(reader.result);
-            };
-            reader.readAsDataURL(files[0]);
-        } else {
-            setPhotoPreview(null);
-        }
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-
-        if (!title.trim()) {
-            setError('Le titre du bilan est obligatoire');
-            return;
-        }
-
-        if (photos.length === 0) {
-            setError('Ajoutez au moins une photo');
-            return;
-        }
-
-        setUploading(true);
-        try {
-            const now = new Date();
-            const dateName = formatDateForName(now);
-            const safeTitle = sanitizeTitleForFileName(title) || 'bilan';
-            const fileNameBase = `${dateName}_${safeTitle}`;
-
-            // Upload all photos in parallel
-            const uploadResults = await Promise.all(
-                photos.map((file) =>
-                    uploadFileToDrive(
-                        file,
-                        patient.bilansFolderId,
-                        `${fileNameBase}.jpg`,
-                    ),
-                ),
-            );
-
-            // Save meta
-            const existing = getBilansMeta(patient.id);
-            const newBilan = {
-                id: Date.now().toString(),
-                title: title.trim(),
-                date: now.toISOString(),
-                fileIds: uploadResults.map((r) => r.id),
-            };
-            saveBilansMeta(patient.id, [...existing, newBilan]);
-
-            onBilanAdded();
-            onClose();
-        } catch (error) {
-            console.error('Error adding bilan:', error);
-            setError('Erreur lors de l\'ajout du bilan. Vérifiez votre connexion.');
-        } finally {
-            setUploading(false);
-        }
-    };
-
-    return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <div style={{ padding: 'var(--spacing-lg)' }}>
-                    <h2 style={{ marginBottom: 'var(--spacing-lg)', fontSize: 'var(--font-size-xl)' }}>
-                        Nouveau Bilan
-                    </h2>
-
-                    <form onSubmit={handleSubmit}>
-                        <div className="form-group">
-                            <label className="form-label" htmlFor="bilan-title">
-                                Titre du bilan *
-                            </label>
-                            <input
-                                id="bilan-title"
-                                type="text"
-                                value={title}
-                                onChange={(e) => setTitle(e.target.value)}
-                                placeholder="Exemple : Lombalgie"
-                                disabled={uploading}
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label className="form-label">Photos *</label>
-                            <label className="btn btn-secondary btn-full" style={{ cursor: 'pointer' }}>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    capture="environment"
-                                    multiple
-                                    onChange={handlePhotosChange}
-                                    disabled={uploading}
-                                    style={{ display: 'none' }}
-                                />
-                                📷 {photos.length > 0 ? `${photos.length} photo(s) sélectionnée(s)` : 'Ajouter des photos'}
-                            </label>
-                        </div>
-
-                        {photoPreview && (
-                            <div className="image-preview mb-md">
-                                <img src={photoPreview} alt="Preview" />
-                            </div>
-                        )}
-
-                        {error && (
-                            <div className="form-error" style={{ marginBottom: 'var(--spacing-md)' }}>
-                                {error}
-                            </div>
-                        )}
-
-                        <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="btn btn-secondary"
-                                disabled={uploading}
-                                style={{ flex: 1 }}
-                            >
-                                Annuler
-                            </button>
-                            <button
-                                type="submit"
-                                className="btn btn-primary"
-                                disabled={uploading}
-                                style={{ flex: 1 }}
-                            >
-                                {uploading ? (
-                                    <div
-                                        className="spinner"
-                                        style={{ width: '20px', height: '20px', borderWidth: '2px' }}
-                                    />
-                                ) : (
-                                    'Enregistrer'
-                                )}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    );
 }
