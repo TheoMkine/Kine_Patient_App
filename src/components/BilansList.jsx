@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { listFilesInFolder, uploadFileToDrive, getFileUrl } from '../services/driveService';
+import ZoomableImage from './ZoomableImage';
 
 // Local metadata for grouped bilans: one bilan can contain several photos
 const getBilansMetaKey = (patientId) => `bilans_meta_${patientId}`;
@@ -491,10 +492,9 @@ export default function BilansList({ patient }) {
                             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--spacing-lg)' }}>
                                 {selectedBilan.files.map((file) => (
                                     <div key={file.id} style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-                                        <img
+                                        <ZoomableImage
                                             src={file.localThumbnail || file.thumbnailLink || getFileUrl(file.id)}
                                             alt={file.name}
-                                            loading="lazy"
                                             style={{
                                                 width: '100%',
                                                 maxWidth: '700px',

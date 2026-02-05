@@ -40,18 +40,17 @@ export default function PatientList({ onSelectPatient }) {
             let hasChanges = false;
 
             for (const folder of folders) {
-                // Name format: NOM_PRENOM_TELEPHONE
+                // Name format: NOM_PRENOM or NOM_PRENOM_TELEPHONE
                 const parts = folder.name.split('_');
-                if (parts.length < 3) continue;
+                if (parts.length < 2) continue;
 
                 const nom = parts[0];
                 const prenom = parts[1];
-                const telephone = parts[2];
+                const telephone = parts[2] || '';
 
                 const exists = existingPatients.find(p =>
                     p.nom.toLowerCase() === nom.toLowerCase() &&
-                    p.prenom.toLowerCase() === prenom.toLowerCase() &&
-                    p.telephone === telephone
+                    p.prenom.toLowerCase() === prenom.toLowerCase()
                 );
 
                 if (!exists) {
@@ -98,8 +97,7 @@ export default function PatientList({ onSelectPatient }) {
             const search = searchTerm.toLowerCase();
             return (
                 patient.nom.toLowerCase().includes(search) ||
-                patient.prenom.toLowerCase().includes(search) ||
-                patient.telephone.includes(search)
+                patient.prenom.toLowerCase().includes(search)
             );
         })
         // Tri principal par prénom

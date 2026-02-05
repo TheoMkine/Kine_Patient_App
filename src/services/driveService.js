@@ -86,7 +86,7 @@ export const listSubFolders = async (parentId) => {
 
 
 // Create complete patient folder structure
-export const createPatientFolder = async (nom, prenom, telephone) => {
+export const createPatientFolder = async (nom, prenom) => {
     try {
         // Ensure KINE_APP folder exists
         const kineAppFolderId = await findOrCreateFolder(ROOT_FOLDER_NAME, DRIVE_FOLDER_ID);
@@ -94,8 +94,8 @@ export const createPatientFolder = async (nom, prenom, telephone) => {
         // Ensure Patients folder exists
         const patientsFolderId = await findOrCreateFolder(PATIENTS_FOLDER_NAME, kineAppFolderId);
 
-        // Create patient folder: NOM_PRENOM_TELEPHONE
-        const patientFolderName = `${nom.toUpperCase()}_${prenom}_${telephone}`;
+        // Create patient folder: NOM_PRENOM
+        const patientFolderName = `${nom.toUpperCase()}_${prenom}`;
         const patientFolderId = await findOrCreateFolder(patientFolderName, patientsFolderId);
 
         // Create Bilans subfolder
@@ -117,13 +117,13 @@ export const createPatientFolder = async (nom, prenom, telephone) => {
 };
 
 // Rename an existing patient folder to match updated contact info
-export const renamePatientFolder = async (patientFolderId, nom, prenom, telephone) => {
+export const renamePatientFolder = async (patientFolderId, nom, prenom) => {
     try {
         if (!patientFolderId) {
             throw new Error('Missing patient folder id');
         }
 
-        const newName = `${nom.toUpperCase()}_${prenom}_${telephone}`;
+        const newName = `${nom.toUpperCase()}_${prenom}`;
 
         await driveFetch(`/files/${patientFolderId}`, {
             method: 'PATCH',

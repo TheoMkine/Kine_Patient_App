@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { listFilesInFolder, uploadFileToDrive, generateDateFilename, getFileUrl } from '../services/driveService';
-import { getSeancesFromJournal, addSeanceToJournal } from '../services/sheetsService';
+import { getSeancesFromJournal, addSeanceToJournal, updateSeanceInJournal } from '../services/sheetsService';
+import ZoomableImage from './ZoomableImage';
 
 const getSeancesPreviewKey = (patientId) => `seances_previews_${patientId}`;
 
@@ -44,6 +45,7 @@ export default function SeancesList({ patient }) {
     const [seances, setSeances] = useState([]);
     const [loading, setLoading] = useState(false);
     const [showAddForm, setShowAddForm] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
     const [selectedSeance, setSelectedSeance] = useState(null);
 
     useEffect(() => {
@@ -158,7 +160,7 @@ export default function SeancesList({ patient }) {
 
             {/* Add Seance Form */}
             {showAddForm && (
-                <AddSeanceForm
+                <SeanceForm
                     patient={patient}
                     onClose={() => setShowAddForm(false)}
                     onSeanceAdded={() => {
@@ -168,8 +170,21 @@ export default function SeancesList({ patient }) {
                 />
             )}
 
+            {isEditing && selectedSeance && (
+                <SeanceForm
+                    patient={patient}
+                    editData={selectedSeance}
+                    onClose={() => setIsEditing(false)}
+                    onSeanceAdded={() => {
+                        setIsEditing(false);
+                        setSelectedSeance(null);
+                        loadSeances();
+                    }}
+                />
+            )}
+
             {/* Image Modal */}
-            {selectedSeance && (
+            {selectedSeance && !isEditing && (
                 <div className="modal-overlay" onClick={() => setSelectedSeance(null)}>
                     <div
                         className="modal-content"
@@ -198,7 +213,7 @@ export default function SeancesList({ patient }) {
                                     justifyContent: 'center'
                                 }}
                             >
-                                <img
+                                <ZoomableImage
                                     src={selectedSeance.localThumbnail || selectedSeance.thumbnailLink || getFileUrl(selectedSeance.fileId)}
                                     alt={selectedSeance.fileName}
                                     style={{
@@ -220,6 +235,13 @@ export default function SeancesList({ patient }) {
                                 </button>
                             )}
                             <button
+                                onClick={() => setIsEditing(true)}
+                                className="btn btn-secondary"
+                                style={{ width: '100%' }}
+                            >
+                                ✏️ Modifier
+                            </button>
+                            <button
                                 onClick={() => setSelectedSeance(null)}
                                 className="btn btn-primary"
                                 style={{ width: '100%' }}
@@ -234,12 +256,15 @@ export default function SeancesList({ patient }) {
     );
 }
 
-// Add Seance Form Component
-function AddSeanceForm({ patient, onClose, onSeanceAdded }) {
+// Seance Form Component (Supports Add and Edit)
+function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
     const [photo, setPhoto] = useState(null);
-    const [photoPreview, setPhotoPreview] = useState(null);
-    const [description, setDescription] = useState('');
+    const [photoPreview, setPhotoPreview] = useState(editData?.localThumbnail || editData?.thumbnailLink || null);
+    const [description, setDescription] = useState(editData?.description || '');
+    const [date, setDate] = useState(editData?.date || new Date().toISOString().split('T')[0]);
     const [uploading, setUploading] = useState(false);
+
+    const isEditMode = !!editData;
 
     const handlePhotoChange = (e) => {
         const file = e.target.files?.[0];
@@ -256,34 +281,46 @@ function AddSeanceForm({ patient, onClose, onSeanceAdded }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (!photo) {
+        if (!photo && !isEditMode) {
             alert('Veuillez prendre une photo');
             return;
         }
 
         setUploading(true);
         try {
-            // Generate filename
-            const fileName = generateDateFilename('jpg');
+            let fileName = editData?.fileName;
+            let fileId = editData?.fileId;
 
-            // Upload to Drive & create compressed preview
-            const [uploadResult, previewDataUrl] = await Promise.all([
-                uploadFileToDrive(photo, patient.seancesFolderId, fileName),
-                createImagePreview(photo)
-            ]);
+            // 1. Handle Photo Upload if changed or new
+            if (photo) {
+                // If adding, generate new name. If editing, we keep the original name to replace? 
+                // Drive upload with same name in same folder might create a duplicate unless we handle it.
+                // Let's generate a new name for sanity and clean up later if needed, 
+                // but the user wants to "change of photo".
+                fileName = generateDateFilename('jpg');
+                const [uploadResult, previewDataUrl] = await Promise.all([
+                    uploadFileToDrive(photo, patient.seancesFolderId, fileName),
+                    createImagePreview(photo)
+                ]);
+                fileId = uploadResult?.id;
 
-            // Add to journal
-            await addSeanceToJournal(patient.journalSheetId, fileName, description);
+                // Save local preview linked to file id
+                if (fileId && previewDataUrl) {
+                    saveSeancePreview(patient.id, fileId, previewDataUrl);
+                }
+            }
 
-            // Save local preview linked to file id
-            if (uploadResult?.id && previewDataUrl) {
-                saveSeancePreview(patient.id, uploadResult.id, previewDataUrl);
+            // 2. Update or Add to Journal
+            if (isEditMode) {
+                await updateSeanceInJournal(patient.journalSheetId, editData.rowIndex, date, fileName, description);
+            } else {
+                await addSeanceToJournal(patient.journalSheetId, fileName, description, date);
             }
 
             onSeanceAdded();
         } catch (error) {
-            console.error('Error adding seance:', error);
-            alert('Erreur lors de l\'ajout de la séance');
+            console.error('Error saving seance:', error);
+            alert('Erreur lors de l\'enregistrement de la séance');
         } finally {
             setUploading(false);
         }
@@ -293,12 +330,27 @@ function AddSeanceForm({ patient, onClose, onSeanceAdded }) {
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div style={{ padding: 'var(--spacing-lg)' }}>
-                    <h2 style={{ marginBottom: 'var(--spacing-lg)' }}>Nouvelle Séance</h2>
+                    <h2 style={{ marginBottom: 'var(--spacing-lg)' }}>
+                        {isEditMode ? 'Modifier la Séance' : 'Nouvelle Séance'}
+                    </h2>
 
                     <form onSubmit={handleSubmit}>
+                        {/* Date Input */}
+                        <div className="form-group">
+                            <label className="form-label" htmlFor="seance-date">Date *</label>
+                            <input
+                                id="seance-date"
+                                type="date"
+                                value={date}
+                                onChange={(e) => setDate(e.target.value)}
+                                disabled={uploading}
+                                required
+                            />
+                        </div>
+
                         {/* Photo Input */}
                         <div className="form-group">
-                            <label className="form-label">Photo *</label>
+                            <label className="form-label">Photo {isEditMode ? '(facultatif pour changement)' : '*'}</label>
                             <label className="btn btn-secondary btn-full" style={{ cursor: 'pointer' }}>
                                 <input
                                     type="file"
@@ -308,7 +360,7 @@ function AddSeanceForm({ patient, onClose, onSeanceAdded }) {
                                     disabled={uploading}
                                     style={{ display: 'none' }}
                                 />
-                                📷 {photo ? 'Photo prise ✓' : 'Prendre une photo'}
+                                📷 {photo ? 'Photo prise ✓' : (isEditMode ? 'Changer la photo' : 'Prendre une photo')}
                             </label>
                         </div>
 
@@ -348,7 +400,7 @@ function AddSeanceForm({ patient, onClose, onSeanceAdded }) {
                             <button
                                 type="submit"
                                 className="btn btn-success"
-                                disabled={uploading || !photo}
+                                disabled={uploading || (!photo && !isEditMode)}
                                 style={{ flex: 1 }}
                             >
                                 {uploading ? (

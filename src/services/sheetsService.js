@@ -88,10 +88,15 @@ export const createJournalSheet = async (patientFolderName, seancesFolderId) => 
 };
 
 // Add a row to the journal sheet
-export const addSeanceToJournal = async (spreadsheetId, fileName, description = '') => {
+export const addSeanceToJournal = async (spreadsheetId, fileName, description = '', date = null) => {
     try {
-        const now = new Date();
-        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        let dateStr;
+        if (date) {
+            dateStr = date; // Expecting YYYY-MM-DD
+        } else {
+            const now = new Date();
+            dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        }
 
         const values = [[dateStr, fileName, description]];
 
@@ -108,6 +113,24 @@ export const addSeanceToJournal = async (spreadsheetId, fileName, description = 
     }
 };
 
+// Update a specific row in the journal sheet
+export const updateSeanceInJournal = async (spreadsheetId, rowIndex, date, fileName, description) => {
+    try {
+        const values = [[date, fileName, description]];
+        const encodedRange = encodeURIComponent(`Séances!A${rowIndex}:C${rowIndex}`);
+
+        await apiFetch(`${GOOGLE_SHEETS_ROOT}/${spreadsheetId}/values/${encodedRange}?valueInputOption=USER_ENTERED`, {
+            method: 'PUT',
+            body: JSON.stringify({ values })
+        });
+
+        return true;
+    } catch (error) {
+        console.error('Error updating seance in journal:', error);
+        throw error;
+    }
+};
+
 // Get all seances from journal
 export const getSeancesFromJournal = async (spreadsheetId) => {
     try {
@@ -115,7 +138,9 @@ export const getSeancesFromJournal = async (spreadsheetId) => {
         const response = await apiFetch(`${GOOGLE_SHEETS_ROOT}/${spreadsheetId}/values/${encodedRange}`);
 
         const rows = response.values || [];
-        return rows.map(row => ({
+        // Map to objects and include the rowIndex (starting from 2 for row A2)
+        return rows.map((row, index) => ({
+            rowIndex: index + 2,
             date: row[0] || '',
             fileName: row[1] || '',
             description: row[2] || ''

@@ -9,8 +9,7 @@ export default function PatientDetail({ patient, onBack, onPatientUpdated }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState({
         nom: patient.nom,
-        prenom: patient.prenom,
-        telephone: patient.telephone
+        prenom: patient.prenom
     });
     const [savingEdit, setSavingEdit] = useState(false);
     const [editError, setEditError] = useState('');
@@ -55,15 +54,14 @@ export default function PatientDetail({ patient, onBack, onPatientUpdated }) {
     const handleEditSubmit = async (e) => {
         e.preventDefault();
 
-        if (!editData.nom.trim() || !editData.prenom.trim() || !editData.telephone.trim()) {
+        if (!editData.nom.trim() || !editData.prenom.trim()) {
             setEditError('Tous les champs sont obligatoires');
             return;
         }
 
         const hasChanges =
             editData.nom.trim() !== patient.nom ||
-            editData.prenom.trim() !== patient.prenom ||
-            editData.telephone.trim() !== patient.telephone;
+            editData.prenom.trim() !== patient.prenom;
 
         if (!hasChanges) {
             setIsEditing(false);
@@ -78,8 +76,7 @@ export default function PatientDetail({ patient, onBack, onPatientUpdated }) {
                 await renamePatientFolder(
                     patient.patientFolderId,
                     editData.nom.trim(),
-                    editData.prenom.trim(),
-                    editData.telephone.trim()
+                    editData.prenom.trim()
                 );
             }
 
@@ -90,8 +87,7 @@ export default function PatientDetail({ patient, onBack, onPatientUpdated }) {
                     ? {
                         ...p,
                         nom: editData.nom.trim(),
-                        prenom: editData.prenom.trim(),
-                        telephone: editData.telephone.trim()
+                        prenom: editData.prenom.trim()
                     }
                     : p
             );
@@ -101,8 +97,7 @@ export default function PatientDetail({ patient, onBack, onPatientUpdated }) {
             const updatedPatient = {
                 ...patient,
                 nom: editData.nom.trim(),
-                prenom: editData.prenom.trim(),
-                telephone: editData.telephone.trim()
+                prenom: editData.prenom.trim()
             };
 
             if (onPatientUpdated) {
@@ -153,8 +148,7 @@ export default function PatientDetail({ patient, onBack, onPatientUpdated }) {
                             onClick={() => {
                                 setEditData({
                                     nom: patient.nom,
-                                    prenom: patient.prenom,
-                                    telephone: patient.telephone
+                                    prenom: patient.prenom
                                 });
                                 setEditError('');
                                 setIsEditing(true);
@@ -190,12 +184,9 @@ export default function PatientDetail({ patient, onBack, onPatientUpdated }) {
                     </div>
 
                     <div>
-                        <h2 style={{ fontSize: 'var(--font-size-xl)', marginBottom: 'var(--spacing-xs)' }}>
+                        <h2 style={{ fontSize: 'var(--font-size-xl)', marginBottom: 0 }}>
                             {patient.prenom} {patient.nom}
                         </h2>
-                        <a href={`tel:${patient.telephone}`} style={{ color: 'var(--accent)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            📞 {patient.telephone}
-                        </a>
                     </div>
                 </div>
 
@@ -261,18 +252,7 @@ export default function PatientDetail({ patient, onBack, onPatientUpdated }) {
                                     />
                                 </div>
 
-                                <div className="form-group">
-                                    <label className="form-label" htmlFor="edit-telephone">Téléphone *</label>
-                                    <input
-                                        id="edit-telephone"
-                                        type="tel"
-                                        name="telephone"
-                                        value={editData.telephone}
-                                        onChange={handleEditChange}
-                                        disabled={savingEdit}
-                                        autoComplete="tel"
-                                    />
-                                </div>
+
 
                                 {editError && (
                                     <div className="form-error" style={{ marginBottom: 'var(--spacing-md)' }}>
