@@ -3,6 +3,7 @@ import { listFilesInFolder, uploadFileToDrive, getFileUrl } from '../services/dr
 
 // Local metadata for grouped bilans: one bilan can contain several photos
 const getBilansMetaKey = (patientId) => `bilans_meta_${patientId}`;
+const getBilansPreviewsKey = (patientId) => `bilans_previews_${patientId}`;
 
 const getBilansMeta = (patientId) => {
     try {
@@ -14,6 +15,20 @@ const getBilansMeta = (patientId) => {
 
 const saveBilansMeta = (patientId, bilans) => {
     localStorage.setItem(getBilansMetaKey(patientId), JSON.stringify(bilans));
+};
+
+const getBilansPreviews = (patientId) => {
+    try {
+        return JSON.parse(localStorage.getItem(getBilansPreviewsKey(patientId)) || '[]');
+    } catch {
+        return [];
+    }
+};
+
+const saveBilanPreviews = (patientId, newPreviews) => {
+    const existing = getBilansPreviews(patientId);
+    const updated = [...existing, ...newPreviews];
+    localStorage.setItem(getBilansPreviewsKey(patientId), JSON.stringify(updated));
 };
 
 // Clean a title to be used safely in file names
@@ -33,11 +48,22 @@ const formatDateForName = (date) => {
     return `${day}_${month}_${year}`;
 };
 
-const createImagePreview = (file) => {
+const createImagePreview = (file, maxWidth = 800) => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
-            resolve(reader.result);
+            const img = new Image();
+            img.onload = () => {
+                const scale = Math.min(1, maxWidth / img.width);
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width * scale;
+                canvas.height = img.height * scale;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
+            };
+            img.onerror = reject;
+            img.src = reader.result;
         };
         reader.onerror = reject;
         reader.readAsDataURL(file);
@@ -88,16 +114,27 @@ function AddBilanForm({ patient, onClose, onBilanAdded }) {
             const safeTitle = sanitizeTitleForFileName(title) || 'bilan';
             const fileNameBase = `${dateName}_${safeTitle}`;
 
-            // Upload all photos in parallel
-            const uploadResults = await Promise.all(
-                photos.map((file, index) =>
-                    uploadFileToDrive(
-                        file,
-                        patient.bilansFolderId,
-                        `${fileNameBase}_${index + 1}.jpg`,
-                    ),
-                ),
+            // Upload all photos and generate thumbnails in parallel
+            const results = await Promise.all(
+                photos.map(async (file, index) => {
+                    const [uploadRes, previewData] = await Promise.all([
+                        uploadFileToDrive(
+                            file,
+                            patient.bilansFolderId,
+                            `${fileNameBase}_${index + 1}.jpg`,
+                        ),
+                        createImagePreview(file, 600)
+                    ]);
+                    return { uploadRes, previewData };
+                }),
             );
+
+            // Save previews
+            const newPreviews = results.map(r => ({
+                fileId: r.uploadRes.id,
+                dataUrl: r.previewData
+            }));
+            saveBilanPreviews(patient.id, newPreviews);
 
             // Save meta
             const existing = getBilansMeta(patient.id);
@@ -105,7 +142,7 @@ function AddBilanForm({ patient, onClose, onBilanAdded }) {
                 id: Date.now().toString(),
                 title: title.trim(),
                 date: now.toISOString(),
-                fileIds: uploadResults.map((r) => r.id),
+                fileIds: results.map(r => r.uploadRes.id),
             };
             saveBilansMeta(patient.id, [...existing, newBilan]);
 
@@ -291,13 +328,21 @@ export default function BilansList({ patient }) {
             const filesById = new Map(files.map((f) => [f.id, f]));
 
             const meta = getBilansMeta(patient.id);
+            const previews = getBilansPreviews(patient.id);
+            const previewsMap = new Map(previews.map(p => [p.fileId, p.dataUrl]));
+
+            const enrichFile = (file) => ({
+                ...file,
+                localThumbnail: previewsMap.get(file.id)
+            });
 
             // 1. Bilans définis par la meta (nouveau système)
             const usedFileIds = new Set();
             const metaBilans = meta.map((bilan) => {
                 const bilanFiles = bilan.fileIds
                     .map((id) => filesById.get(id))
-                    .filter(Boolean);
+                    .filter(Boolean)
+                    .map(enrichFile);
 
                 bilanFiles.forEach((f) => usedFileIds.add(f.id));
 
@@ -319,7 +364,7 @@ export default function BilansList({ patient }) {
                     id: file.id,
                     title: '',
                     createdAt: file.createdTime,
-                    files: [file],
+                    files: [enrichFile(file)],
                 }));
 
             const allBilans = [...metaBilans, ...orphanBilans].sort(
@@ -374,8 +419,8 @@ export default function BilansList({ patient }) {
                                 <div style={{ display: 'flex', gap: 'var(--spacing-md)', alignItems: 'center' }}>
                                     {cover?.thumbnailLink && (
                                         <img
-                                            src={cover.thumbnailLink}
-                                            alt={cover.name}
+                                            src={cover?.localThumbnail || cover?.thumbnailLink}
+                                            alt={cover?.name}
                                             style={{
                                                 width: '80px',
                                                 height: '80px',
@@ -447,7 +492,7 @@ export default function BilansList({ patient }) {
                                 {selectedBilan.files.map((file) => (
                                     <div key={file.id} style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
                                         <img
-                                            src={getFileUrl(file.id)}
+                                            src={file.localThumbnail || file.thumbnailLink || getFileUrl(file.id)}
                                             alt={file.name}
                                             loading="lazy"
                                             style={{

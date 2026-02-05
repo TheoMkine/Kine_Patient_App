@@ -35,14 +35,12 @@ const driveFetch = async (endpoint, options = {}) => {
 
 // Find or create a folder by name within a parent folder
 // Find or create a folder by name within a parent folder
-const findOrCreateFolder = async (folderName, parentId) => {
+export const findOrCreateFolder = async (folderName, parentId) => {
     try {
         let query;
-        if (parentId) {
+        if (parentId && parentId !== 'root') {
             query = `name='${folderName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         } else {
-            // If no parent, search in root but be careful about duplicates in root
-            // using 'root' in parents is cleaner
             query = `name='${folderName}' and 'root' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         }
 
@@ -58,7 +56,7 @@ const findOrCreateFolder = async (folderName, parentId) => {
             mimeType: 'application/vnd.google-apps.folder'
         };
 
-        if (parentId) {
+        if (parentId && parentId !== 'root') {
             body.parents = [parentId];
         }
 
@@ -73,6 +71,19 @@ const findOrCreateFolder = async (folderName, parentId) => {
         throw error;
     }
 };
+
+// List subfolders in a folder
+export const listSubFolders = async (parentId) => {
+    try {
+        const query = `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const res = await driveFetch(`/files?q=${encodeURIComponent(query)}&fields=files(id,name)`);
+        return res.files || [];
+    } catch (error) {
+        console.error('Error listing folders:', error);
+        return [];
+    }
+};
+
 
 // Create complete patient folder structure
 export const createPatientFolder = async (nom, prenom, telephone) => {

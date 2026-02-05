@@ -18,7 +18,7 @@ const saveSeancePreview = (patientId, fileId, dataUrl) => {
     localStorage.setItem(getSeancesPreviewKey(patientId), JSON.stringify(existing));
 };
 
-const createImagePreview = (file, maxWidth = 600) => {
+const createImagePreview = (file, maxWidth = 800) => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -30,7 +30,7 @@ const createImagePreview = (file, maxWidth = 600) => {
                 canvas.height = img.height * scale;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL('image/jpeg', 0.7));
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
             };
             img.onerror = reject;
             img.src = reader.result;

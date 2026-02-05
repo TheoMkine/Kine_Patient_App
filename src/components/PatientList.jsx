@@ -1,4 +1,13 @@
 import { useState, useEffect } from 'react';
+import { findOrCreateFolder, listSubFolders } from '../services/driveService';
+import { findJournalSheet } from '../services/sheetsService';
+import {
+    DRIVE_FOLDER_ID,
+    ROOT_FOLDER_NAME,
+    PATIENTS_FOLDER_NAME,
+    BILANS_FOLDER_NAME,
+    SEANCES_FOLDER_NAME
+} from '../config/google';
 
 export default function PatientList({ onSelectPatient }) {
     const [patients, setPatients] = useState([]);
@@ -6,12 +15,83 @@ export default function PatientList({ onSelectPatient }) {
 
     useEffect(() => {
         loadPatients();
+        // Background sync
+        syncPatientsWithDrive();
     }, []);
 
     const loadPatients = () => {
         const storedPatients = JSON.parse(localStorage.getItem('patients') || '[]');
         setPatients(storedPatients);
     };
+
+    const syncPatientsWithDrive = async () => {
+        try {
+            // 1. Resolve folder IDs
+            const rootId = await findOrCreateFolder(ROOT_FOLDER_NAME, DRIVE_FOLDER_ID || 'root');
+            const patientsFolderId = await findOrCreateFolder(PATIENTS_FOLDER_NAME, rootId);
+
+            // 2. List folders in Drive
+            const folders = await listSubFolders(patientsFolderId);
+            if (!folders.length) return;
+
+            // 3. Compare with local data
+            const existingPatients = JSON.parse(localStorage.getItem('patients') || '[]');
+            let updatedList = [...existingPatients];
+            let hasChanges = false;
+
+            for (const folder of folders) {
+                // Name format: NOM_PRENOM_TELEPHONE
+                const parts = folder.name.split('_');
+                if (parts.length < 3) continue;
+
+                const nom = parts[0];
+                const prenom = parts[1];
+                const telephone = parts[2];
+
+                const exists = existingPatients.find(p =>
+                    p.nom.toLowerCase() === nom.toLowerCase() &&
+                    p.prenom.toLowerCase() === prenom.toLowerCase() &&
+                    p.telephone === telephone
+                );
+
+                if (!exists) {
+                    console.log(`Syncing new patient from Drive: ${prenom} ${nom}`);
+
+                    // Fetch subfolder IDs
+                    const subs = await listSubFolders(folder.id);
+                    const bilansFolderId = subs.find(f => f.name === BILANS_FOLDER_NAME)?.id;
+                    const seancesFolderId = subs.find(f => f.name === SEANCES_FOLDER_NAME)?.id;
+
+                    if (seancesFolderId) {
+                        const journalSheetId = await findJournalSheet(seancesFolderId);
+
+                        const newPatient = {
+                            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                            nom,
+                            prenom,
+                            telephone,
+                            patientFolderId: folder.id,
+                            bilansFolderId,
+                            seancesFolderId,
+                            journalSheetId,
+                            createdAt: new Date().toISOString()
+                        };
+
+                        updatedList.push(newPatient);
+                        hasChanges = true;
+                    }
+                }
+            }
+
+            if (hasChanges) {
+                localStorage.setItem('patients', JSON.stringify(updatedList));
+                setPatients(updatedList);
+            }
+        } catch (error) {
+            console.error('Background sync failed:', error);
+        }
+    };
+
 
     const filteredPatients = patients
         .filter(patient => {
