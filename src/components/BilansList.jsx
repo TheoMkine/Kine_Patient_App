@@ -151,7 +151,7 @@ function AddBilanForm({ patient, onClose, onBilanAdded }) {
             onClose();
         } catch (error) {
             console.error('Error adding bilan:', error);
-            setError('Erreur lors de l\'ajout du bilan. Vérifiez votre connexion.');
+            setError('Erreur lors de l\'ajout du bilan : ' + error.message);
         } finally {
             setUploading(false);
         }

@@ -26,14 +26,19 @@ const driveFetch = async (endpoint, options = {}) => {
     });
 
     if (!response.ok) {
-        const errorBody = await response.json();
-        throw new Error(errorBody.error?.message || 'Drive API Error');
+        let errorMsg = 'Drive API Error';
+        try {
+            const errorBody = await response.json();
+            errorMsg = errorBody.error?.message || errorMsg;
+        } catch (e) {
+            errorMsg = `Status: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMsg);
     }
 
     return response.json();
 };
 
-// Find or create a folder by name within a parent folder
 // Find or create a folder by name within a parent folder
 export const findOrCreateFolder = async (folderName, parentId) => {
     try {
@@ -137,7 +142,7 @@ export const renamePatientFolder = async (patientFolderId, nom, prenom) => {
     }
 };
 
-// Upload a file to Google Drive
+// Upload a file to Google Drive using multipart/related for better compatibility
 export const uploadFileToDrive = async (file, folderId, fileName = null) => {
     try {
         const token = getAccessToken();
@@ -146,20 +151,47 @@ export const uploadFileToDrive = async (file, folderId, fileName = null) => {
             parents: [folderId]
         };
 
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', file);
+        const boundary = '-------314159265358979323846';
+        const delimiter = "\r\n--" + boundary + "\r\n";
+        const close_delim = "\r\n--" + boundary + "--";
+
+        const contentType = file.type || 'application/octet-stream';
+
+        const multipartRequestBody =
+            delimiter +
+            'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+            JSON.stringify(metadata) +
+            delimiter +
+            'Content-Type: ' + contentType + '\r\n\r\n';
+
+        // Use Blob to merge metadata and binary file safely
+        const body = new Blob([
+            multipartRequestBody,
+            file,
+            close_delim
+        ], { type: `multipart/related; boundary=${boundary}` });
 
         const response = await fetch(
             'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink',
             {
                 method: 'POST',
-                headers: new Headers({ 'Authorization': 'Bearer ' + token }),
-                body: form
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: body
             }
         );
 
-        if (!response.ok) throw new Error('Upload failed');
+        if (!response.ok) {
+            let errorMsg = 'Upload failed';
+            try {
+                const errorBody = await response.json();
+                errorMsg = errorBody.error?.message || errorMsg;
+            } catch (e) {
+                errorMsg = `Status: ${response.status}`;
+            }
+            throw new Error(errorMsg);
+        }
 
         const result = await response.json();
         return result;
@@ -168,6 +200,7 @@ export const uploadFileToDrive = async (file, folderId, fileName = null) => {
         throw error;
     }
 };
+
 
 // List files in a folder
 export const listFilesInFolder = async (folderId) => {

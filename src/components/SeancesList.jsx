@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { listFilesInFolder, uploadFileToDrive, generateDateFilename, getFileUrl } from '../services/driveService';
-import { getSeancesFromJournal, addSeanceToJournal, updateSeanceInJournal } from '../services/sheetsService';
+import { listFilesInFolder, uploadFileToDrive, generateDateFilename, getFileUrl, deleteFile } from '../services/driveService';
+import { getSeancesFromJournal, addSeanceToJournal, updateSeanceInJournal, deleteSeanceFromJournal } from '../services/sheetsService';
 import ZoomableImage from './ZoomableImage';
 
 const getSeancesPreviewKey = (patientId) => `seances_previews_${patientId}`;
@@ -278,6 +278,32 @@ function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
         }
     };
 
+    const handleDelete = async () => {
+        if (!isEditMode || !editData) return;
+
+        if (window.confirm('⚠️ Êtes-vous sûr de vouloir supprimer cette séance ?\n\nCette action est irréversible.')) {
+            setUploading(true);
+            try {
+                // 1. Delete photo from Drive
+                if (editData.fileId) {
+                    await deleteFile(editData.fileId).catch(err => {
+                        console.error('Error deleting file from Drive:', err);
+                    });
+                }
+
+                // 2. Delete row from journal
+                await deleteSeanceFromJournal(patient.journalSheetId, editData.rowIndex);
+
+                onSeanceAdded();
+            } catch (error) {
+                console.error('Error deleting seance:', error);
+                alert('Erreur lors de la suppression de la séance : ' + error.message);
+            } finally {
+                setUploading(false);
+            }
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -320,7 +346,7 @@ function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
             onSeanceAdded();
         } catch (error) {
             console.error('Error saving seance:', error);
-            alert('Erreur lors de l\'enregistrement de la séance');
+            alert('Erreur lors de l\'enregistrement de la séance : ' + error.message);
         } finally {
             setUploading(false);
         }
@@ -345,6 +371,7 @@ function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
                                 onChange={(e) => setDate(e.target.value)}
                                 disabled={uploading}
                                 required
+                                style={{ width: '100%', minHeight: '56px' }}
                             />
                         </div>
 
@@ -387,28 +414,42 @@ function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
                         </div>
 
                         {/* Actions */}
-                        <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="btn btn-secondary"
-                                disabled={uploading}
-                                style={{ flex: 1 }}
-                            >
-                                Annuler
-                            </button>
-                            <button
-                                type="submit"
-                                className="btn btn-success"
-                                disabled={uploading || (!photo && !isEditMode)}
-                                style={{ flex: 1 }}
-                            >
-                                {uploading ? (
-                                    <div className="spinner" style={{ width: '20px', height: '20px', borderWidth: '2px' }} />
-                                ) : (
-                                    'Valider'
-                                )}
-                            </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                            <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="btn btn-secondary"
+                                    disabled={uploading}
+                                    style={{ flex: 1 }}
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="btn btn-success"
+                                    disabled={uploading || (!photo && !isEditMode)}
+                                    style={{ flex: 1 }}
+                                >
+                                    {uploading ? (
+                                        <div className="spinner" style={{ width: '20px', height: '20px', borderWidth: '2px' }} />
+                                    ) : (
+                                        'Valider'
+                                    )}
+                                </button>
+                            </div>
+
+                            {isEditMode && (
+                                <button
+                                    type="button"
+                                    onClick={handleDelete}
+                                    className="btn btn-danger btn-full"
+                                    disabled={uploading}
+                                    style={{ background: '#dc3545', border: 'none' }}
+                                >
+                                    🗑️ Supprimer la séance
+                                </button>
+                            )}
                         </div>
                     </form>
                 </div>

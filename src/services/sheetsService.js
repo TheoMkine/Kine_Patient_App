@@ -131,6 +131,49 @@ export const updateSeanceInJournal = async (spreadsheetId, rowIndex, date, fileN
     }
 };
 
+// Get sheetId by name
+export const getSheetIdByName = async (spreadsheetId, name) => {
+    try {
+        const spreadsheet = await apiFetch(`${GOOGLE_SHEETS_ROOT}/${spreadsheetId}?fields=sheets(properties(title,sheetId))`);
+        const sheet = spreadsheet.sheets.find(s => s.properties.title === name);
+        return sheet ? sheet.properties.sheetId : null;
+    } catch (error) {
+        console.error('Error getting sheet id:', error);
+        return null;
+    }
+};
+
+// Delete a specific row in the journal sheet
+export const deleteSeanceFromJournal = async (spreadsheetId, rowIndex) => {
+    try {
+        const sheetId = await getSheetIdByName(spreadsheetId, 'Séances');
+        if (sheetId === null) throw new Error('Feuille "Séances" non trouvée');
+
+        const body = {
+            requests: [{
+                deleteDimension: {
+                    range: {
+                        sheetId: sheetId,
+                        dimension: 'ROWS',
+                        startIndex: rowIndex - 1,
+                        endIndex: rowIndex
+                    }
+                }
+            }]
+        };
+
+        await apiFetch(`${GOOGLE_SHEETS_ROOT}/${spreadsheetId}:batchUpdate`, {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+
+        return true;
+    } catch (error) {
+        console.error('Error deleting seance from journal:', error);
+        throw error;
+    }
+};
+
 // Get all seances from journal
 export const getSeancesFromJournal = async (spreadsheetId) => {
     try {
