@@ -12,6 +12,7 @@ import {
 export default function PatientList({ onSelectPatient }) {
     const [patients, setPatients] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [syncing, setSyncing] = useState(false);
 
     useEffect(() => {
         loadPatients();
@@ -25,6 +26,7 @@ export default function PatientList({ onSelectPatient }) {
     };
 
     const syncPatientsWithDrive = async () => {
+        setSyncing(true);
         try {
             // 1. Resolve folder IDs
             const rootId = await findOrCreateFolder(ROOT_FOLDER_NAME, DRIVE_FOLDER_ID || 'root');
@@ -88,6 +90,8 @@ export default function PatientList({ onSelectPatient }) {
             }
         } catch (error) {
             console.error('Background sync failed:', error);
+        } finally {
+            setSyncing(false);
         }
     };
 
@@ -115,6 +119,22 @@ export default function PatientList({ onSelectPatient }) {
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
+                </div>
+            )}
+
+            {syncing && (
+                <div style={{
+                    textAlign: 'center',
+                    fontSize: 'var(--font-size-sm)',
+                    color: 'var(--text-secondary)',
+                    marginBottom: 'var(--spacing-md)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                }}>
+                    <div className="spinner" style={{ width: '12px', height: '12px', borderWidth: '2px' }} />
+                    Synchronisation avec Google Drive...
                 </div>
             )}
 
