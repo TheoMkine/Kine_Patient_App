@@ -42,6 +42,22 @@ const driveFetch = async (endpoint, options = {}) => {
 // Find or create a folder by name within a parent folder
 export const findOrCreateFolder = async (folderName, parentId) => {
     try {
+        // Optimization: If parentId is provided and NOT 'root', check if it IS the folder we want
+        // This prevents creating 'KINE_APP/KINE_APP' if the user provides the KINE_APP folder ID
+        if (parentId && parentId !== 'root') {
+            try {
+                const parentInfo = await driveFetch(`/files/${parentId}?fields=id,name,mimeType,trashed`);
+                if (parentInfo.name === folderName &&
+                    parentInfo.mimeType === 'application/vnd.google-apps.folder' &&
+                    !parentInfo.trashed) {
+                    console.log(`Sync: Folder '${folderName}' already exists at ID: ${parentId}`);
+                    return parentId;
+                }
+            } catch (e) {
+                // Ignore errors (e.g. 404) and continue with search
+            }
+        }
+
         let query;
         if (parentId && parentId !== 'root') {
             query = `name='${folderName}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
