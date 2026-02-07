@@ -19,6 +19,9 @@ function App() {
 
   const initializeApp = async () => {
     try {
+      // Cleanup old image previews to free up space
+      cleanupLocalStorage();
+
       // Initialize Google Identity Services
       await initGoogleIdentity();
       await initGoogleAPI(); // Keeping for compatibility, though empty now
@@ -31,6 +34,24 @@ function App() {
       console.error('Error initializing app:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const cleanupLocalStorage = () => {
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('seances_previews_') || key.startsWith('bilans_previews_'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      if (keysToRemove.length > 0) {
+        console.log(`Nettoyage de ${keysToRemove.length} clés d'aperçus d'images.`);
+      }
+    } catch (e) {
+      console.warn('Erreur lors du nettoyage du localStorage:', e);
     }
   };
 

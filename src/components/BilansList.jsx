@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { listFilesInFolder, uploadFileToDrive, getFileUrl } from '../services/driveService';
 import ZoomableImage from './ZoomableImage';
+import { compressImage } from '../utils/imageUtils';
 
 // Local metadata for grouped bilans: one bilan can contain several photos
+// Local metadata for grouped bilans: one bilan can contain several photos
 const getBilansMetaKey = (patientId) => `bilans_meta_${patientId}`;
-const getBilansPreviewsKey = (patientId) => `bilans_previews_${patientId}`;
 
 const getBilansMeta = (patientId) => {
     try {
@@ -16,20 +17,6 @@ const getBilansMeta = (patientId) => {
 
 const saveBilansMeta = (patientId, bilans) => {
     localStorage.setItem(getBilansMetaKey(patientId), JSON.stringify(bilans));
-};
-
-const getBilansPreviews = (patientId) => {
-    try {
-        return JSON.parse(localStorage.getItem(getBilansPreviewsKey(patientId)) || '[]');
-    } catch {
-        return [];
-    }
-};
-
-const saveBilanPreviews = (patientId, newPreviews) => {
-    const existing = getBilansPreviews(patientId);
-    const updated = [...existing, ...newPreviews];
-    localStorage.setItem(getBilansPreviewsKey(patientId), JSON.stringify(updated));
 };
 
 // Clean a title to be used safely in file names
@@ -118,24 +105,17 @@ function AddBilanForm({ patient, onClose, onBilanAdded }) {
             // Upload all photos and generate thumbnails in parallel
             const results = await Promise.all(
                 photos.map(async (file, index) => {
-                    const [uploadRes, previewData] = await Promise.all([
-                        uploadFileToDrive(
-                            file,
-                            patient.bilansFolderId,
-                            `${fileNameBase}_${index + 1}.jpg`,
-                        ),
-                        createImagePreview(file, 600)
-                    ]);
-                    return { uploadRes, previewData };
+                    // Compress original image for Drive
+                    const compressedFile = await compressImage(file, 1600, 0.75);
+
+                    const uploadRes = await uploadFileToDrive(
+                        compressedFile,
+                        patient.bilansFolderId,
+                        `${fileNameBase}_${index + 1}.jpg`,
+                    );
+                    return { uploadRes };
                 }),
             );
-
-            // Save previews
-            const newPreviews = results.map(r => ({
-                fileId: r.uploadRes.id,
-                dataUrl: r.previewData
-            }));
-            saveBilanPreviews(patient.id, newPreviews);
 
             // Save meta
             const existing = getBilansMeta(patient.id);
@@ -177,6 +157,19 @@ function AddBilanForm({ patient, onClose, onBilanAdded }) {
                                 onChange={(e) => setTitle(e.target.value)}
                                 placeholder="Exemple : Lombalgie"
                                 disabled={uploading}
+                                style={{
+                                    width: '100%',
+                                    minHeight: '56px',
+                                    borderRadius: 'var(--radius-md)',
+                                    padding: 'var(--spacing-md) var(--spacing-lg)',
+                                    backgroundColor: 'var(--surface)',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--text-primary)',
+                                    fontWeight: '500',
+                                    fontFamily: 'inherit',
+                                    fontSize: 'var(--font-size-base)',
+                                    boxSizing: 'border-box'
+                                }}
                             />
                         </div>
 
@@ -329,12 +322,9 @@ export default function BilansList({ patient }) {
             const filesById = new Map(files.map((f) => [f.id, f]));
 
             const meta = getBilansMeta(patient.id);
-            const previews = getBilansPreviews(patient.id);
-            const previewsMap = new Map(previews.map(p => [p.fileId, p.dataUrl]));
 
             const enrichFile = (file) => ({
-                ...file,
-                localThumbnail: previewsMap.get(file.id)
+                ...file
             });
 
             // 1. Bilans définis par la meta (nouveau système)
@@ -420,7 +410,7 @@ export default function BilansList({ patient }) {
                                 <div style={{ display: 'flex', gap: 'var(--spacing-md)', alignItems: 'center' }}>
                                     {cover?.thumbnailLink && (
                                         <img
-                                            src={cover?.localThumbnail || cover?.thumbnailLink}
+                                            src={cover.thumbnailLink}
                                             alt={cover?.name}
                                             style={{
                                                 width: '80px',
@@ -493,7 +483,7 @@ export default function BilansList({ patient }) {
                                 {selectedBilan.files.map((file) => (
                                     <div key={file.id} style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
                                         <ZoomableImage
-                                            src={file.localThumbnail || file.thumbnailLink || getFileUrl(file.id)}
+                                            src={file.thumbnailLink || getFileUrl(file.id)}
                                             alt={file.name}
                                             style={{
                                                 width: '100%',

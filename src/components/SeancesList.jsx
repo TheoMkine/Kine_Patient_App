@@ -2,22 +2,7 @@ import { useState, useEffect } from 'react';
 import { listFilesInFolder, uploadFileToDrive, generateDateFilename, getFileUrl, deleteFile } from '../services/driveService';
 import { getSeancesFromJournal, addSeanceToJournal, updateSeanceInJournal, deleteSeanceFromJournal } from '../services/sheetsService';
 import ZoomableImage from './ZoomableImage';
-
-const getSeancesPreviewKey = (patientId) => `seances_previews_${patientId}`;
-
-const getSeancesPreviews = (patientId) => {
-    try {
-        return JSON.parse(localStorage.getItem(getSeancesPreviewKey(patientId)) || '[]');
-    } catch {
-        return [];
-    }
-};
-
-const saveSeancePreview = (patientId, fileId, dataUrl) => {
-    const existing = getSeancesPreviews(patientId);
-    existing.push({ fileId, dataUrl });
-    localStorage.setItem(getSeancesPreviewKey(patientId), JSON.stringify(existing));
-};
+import { compressImage } from '../utils/imageUtils';
 
 const createImagePreview = (file, maxWidth = 800) => {
     return new Promise((resolve, reject) => {
@@ -63,21 +48,17 @@ export default function SeancesList({ patient }) {
             // Load files from folder to get image URLs
             const files = await listFilesInFolder(patient.seancesFolderId);
 
-            const previews = getSeancesPreviews(patient.id);
-
             // Merge data
             const mergedSeances = journalSeances.map(seance => {
                 const file = files.find(f => f.name === seance.fileName);
                 const fileId = file?.id;
-                const preview = previews.find((p) => p.fileId === fileId);
 
                 return {
                     ...seance,
                     fileId,
                     thumbnailLink: file?.thumbnailLink,
                     webViewLink: file?.webViewLink,
-                    webContentLink: file?.webContentLink,
-                    localThumbnail: preview?.dataUrl || null
+                    webContentLink: file?.webContentLink
                 };
             });
 
@@ -125,9 +106,9 @@ export default function SeancesList({ patient }) {
                             onClick={() => seance.fileId && setSelectedSeance(seance)}
                         >
                             <div style={{ display: 'flex', gap: 'var(--spacing-md)', alignItems: 'center' }}>
-                                {(seance.localThumbnail || seance.thumbnailLink) && (
+                                {seance.thumbnailLink && (
                                     <img
-                                        src={seance.localThumbnail || seance.thumbnailLink}
+                                        src={seance.thumbnailLink}
                                         alt={seance.fileName}
                                         style={{
                                             width: '80px',
@@ -214,7 +195,7 @@ export default function SeancesList({ patient }) {
                                 }}
                             >
                                 <ZoomableImage
-                                    src={selectedSeance.localThumbnail || selectedSeance.thumbnailLink || getFileUrl(selectedSeance.fileId)}
+                                    src={selectedSeance.thumbnailLink || getFileUrl(selectedSeance.fileId)}
                                     alt={selectedSeance.fileName}
                                     style={{
                                         width: '100%',
@@ -259,7 +240,7 @@ export default function SeancesList({ patient }) {
 // Seance Form Component (Supports Add and Edit)
 function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
     const [photo, setPhoto] = useState(null);
-    const [photoPreview, setPhotoPreview] = useState(editData?.localThumbnail || editData?.thumbnailLink || null);
+    const [photoPreview, setPhotoPreview] = useState(editData?.thumbnailLink || null);
     const [description, setDescription] = useState(editData?.description || '');
     const [date, setDate] = useState(editData?.date || new Date().toISOString().split('T')[0]);
     const [uploading, setUploading] = useState(false);
@@ -319,21 +300,15 @@ function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
 
             // 1. Handle Photo Upload if changed or new
             if (photo) {
-                // If adding, generate new name. If editing, we keep the original name to replace? 
-                // Drive upload with same name in same folder might create a duplicate unless we handle it.
-                // Let's generate a new name for sanity and clean up later if needed, 
-                // but the user wants to "change of photo".
                 fileName = generateDateFilename('jpg');
-                const [uploadResult, previewDataUrl] = await Promise.all([
-                    uploadFileToDrive(photo, patient.seancesFolderId, fileName),
-                    createImagePreview(photo)
+
+                // Compress original image for Drive (reduces quota usage)
+                const compressedPhoto = await compressImage(photo, 1600, 0.75);
+
+                const [uploadResult] = await Promise.all([
+                    uploadFileToDrive(compressedPhoto, patient.seancesFolderId, fileName)
                 ]);
                 fileId = uploadResult?.id;
-
-                // Save local preview linked to file id
-                if (fileId && previewDataUrl) {
-                    saveSeancePreview(patient.id, fileId, previewDataUrl);
-                }
             }
 
             // 2. Update or Add to Journal
@@ -371,7 +346,21 @@ function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
                                 onChange={(e) => setDate(e.target.value)}
                                 disabled={uploading}
                                 required
-                                style={{ width: '100%', minHeight: '56px' }}
+                                style={{
+                                    width: '100%',
+                                    minHeight: '56px',
+                                    borderRadius: 'var(--radius-md)',
+                                    padding: 'var(--spacing-md) var(--spacing-lg)',
+                                    backgroundColor: 'var(--surface)',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--text-primary)',
+                                    fontWeight: '500',
+                                    fontFamily: 'inherit',
+                                    fontSize: 'var(--font-size-base)',
+                                    boxSizing: 'border-box',
+                                    appearance: 'none',
+                                    display: 'block'
+                                }}
                             />
                         </div>
 
