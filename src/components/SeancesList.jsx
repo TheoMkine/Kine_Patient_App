@@ -1,7 +1,7 @@
+import { useState, useEffect } from 'react';
 import { listFilesInFolder, uploadFileToDrive, generateDateFilename, getFileUrl, deleteFile, downloadFileContent } from '../services/driveService';
 import { getSeancesFromJournal, addSeanceToJournal, updateSeanceInJournal, deleteSeanceFromJournal } from '../services/sheetsService';
 import ZoomableImage from './ZoomableImage';
-import { compressImage } from '../utils/imageUtils';
 
 const createImagePreview = (file, maxWidth = 800) => {
     return new Promise((resolve, reject) => {

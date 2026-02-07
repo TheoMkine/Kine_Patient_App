@@ -1,6 +1,6 @@
+import { useState, useEffect } from 'react';
 import { listFilesInFolder, uploadFileToDrive, getFileUrl, downloadFileContent } from '../services/driveService';
 import ZoomableImage from './ZoomableImage';
-import { compressImage } from '../utils/imageUtils';
 
 // Local metadata for grouped bilans: one bilan can contain several photos
 // Local metadata for grouped bilans: one bilan can contain several photos
