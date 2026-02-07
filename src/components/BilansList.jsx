@@ -148,7 +148,7 @@ function AddBilanForm({ patient, onClose, onBilanAdded }) {
                     const uploadRes = await uploadFileToDrive(
                         file,
                         patient.bilansFolderId,
-                        `${fileNameBase}_${index + 1}.jpg`,
+                        `${fileNameBase}_${index + 1}.webp`,
                     );
                     return { uploadRes };
                 }),

@@ -1,10 +1,9 @@
-// Google API Configuration
 // Les clés sont chargées depuis les variables d'environnement
 // En développement : depuis .env.local
-// En production (Netlify) : depuis les variables d'environnement Netlify
-export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "740423920986-d529ee2tisdq23i742f0n9a4l95k17p5.apps.googleusercontent.com";
-export const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || "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";
-export const DRIVE_FOLDER_ID = import.meta.env.VITE_DRIVE_FOLDER_ID || null; // Set to null to create in root, or paste an ID of a folder you have write access to
+// En production (GitHub Pages) : depuis les secrets GitHub injectés lors du build
+export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+export const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
+export const DRIVE_FOLDER_ID = import.meta.env.VITE_DRIVE_FOLDER_ID || null; // Set to null to create in root
 
 // Google API Scopes
 export const SCOPES = [

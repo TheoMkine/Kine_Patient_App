@@ -330,11 +330,9 @@ function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
 
             // 1. Handle Photo Upload if changed or new
             if (photo) {
-                fileName = generateDateFilename('jpg');
-                const [uploadResult] = await Promise.all([
-                    uploadFileToDrive(photo, patient.seancesFolderId, fileName)
-                ]);
+                const uploadResult = await uploadFileToDrive(photo, patient.seancesFolderId, generateDateFilename('webp'));
                 fileId = uploadResult?.id;
+                fileName = uploadResult?.name; // Use the actual name returned (which will be .webp)
             }
 
             // 2. Update or Add to Journal
