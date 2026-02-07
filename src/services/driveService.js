@@ -226,7 +226,25 @@ export const generateDateFilename = (extension = 'jpg') => {
     return `${day}_${month}_${year}.${extension}`;
 };
 
-// Helper to get a direct URL for a file
+// Download file content as a Blob (for HD display)
+export const downloadFileContent = async (fileId) => {
+    const token = getAccessToken();
+    if (!token) throw new Error('No access token');
+
+    const response = await fetch(`${GOOGLE_API_ROOT}/files/${fileId}?alt=media`, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`);
+    }
+
+    return response.blob();
+};
+
+// Helper to get a direct URL for a file (useful for external links, limited for authenticated tags)
 export const getFileUrl = (fileId) => {
     return `https://drive.google.com/uc?export=view&id=${fileId}`;
 };

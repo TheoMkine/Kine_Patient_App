@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { listFilesInFolder, uploadFileToDrive, getFileUrl } from '../services/driveService';
+import { listFilesInFolder, uploadFileToDrive, getFileUrl, downloadFileContent } from '../services/driveService';
 import ZoomableImage from './ZoomableImage';
 import { compressImage } from '../utils/imageUtils';
 
@@ -35,6 +34,47 @@ const formatDateForName = (date) => {
     const year = d.getFullYear();
     return `${day}_${month}_${year}`;
 };
+
+// Helper component to load HD image for ZoomableImage
+function HdZoomableImage({ fileId, thumbnailLink, alt, style }) {
+    const [hdUrl, setHdUrl] = useState(null);
+
+    useEffect(() => {
+        let url = null;
+        const loadHd = async () => {
+            try {
+                const blob = await downloadFileContent(fileId);
+                url = URL.createObjectURL(blob);
+                setHdUrl(url);
+            } catch (err) {
+                console.error('Error loading HD bilan image:', err);
+            }
+        };
+        loadHd();
+        return () => {
+            if (url) URL.revokeObjectURL(url);
+        };
+    }, [fileId]);
+
+    return (
+        <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
+            <ZoomableImage
+                src={hdUrl || thumbnailLink || getFileUrl(fileId)}
+                alt={alt}
+                style={{
+                    ...style,
+                    opacity: hdUrl ? 1 : 0.6,
+                    transition: 'opacity 0.3s ease'
+                }}
+            />
+            {!hdUrl && (
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+                    <div className="spinner" style={{ width: '30px', height: '30px' }} />
+                </div>
+            )}
+        </div>
+    );
+}
 
 const createImagePreview = (file, maxWidth = 800) => {
     return new Promise((resolve, reject) => {
@@ -478,19 +518,19 @@ export default function BilansList({ patient }) {
 
                             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--spacing-lg)' }}>
                                 {selectedBilan.files.map((file) => (
-                                    <div key={file.id} style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
-                                        <ZoomableImage
-                                            src={file.thumbnailLink || getFileUrl(file.id)}
-                                            alt={file.name}
-                                            style={{
-                                                width: '100%',
-                                                maxWidth: '700px',
-                                                maxHeight: '80vh',
-                                                objectFit: 'contain',
-                                                borderRadius: 'var(--radius-sm)'
-                                            }}
-                                        />
-                                    </div>
+                                    <HdZoomableImage
+                                        key={file.id}
+                                        fileId={file.id}
+                                        thumbnailLink={file.thumbnailLink}
+                                        alt={file.name}
+                                        style={{
+                                            width: '100%',
+                                            maxWidth: '700px',
+                                            maxHeight: '80vh',
+                                            objectFit: 'contain',
+                                            borderRadius: 'var(--radius-sm)'
+                                        }}
+                                    />
                                 ))}
                             </div>
 

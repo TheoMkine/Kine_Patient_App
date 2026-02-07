@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { listFilesInFolder, uploadFileToDrive, generateDateFilename, getFileUrl, deleteFile } from '../services/driveService';
+import { listFilesInFolder, uploadFileToDrive, generateDateFilename, getFileUrl, deleteFile, downloadFileContent } from '../services/driveService';
 import { getSeancesFromJournal, addSeanceToJournal, updateSeanceInJournal, deleteSeanceFromJournal } from '../services/sheetsService';
 import ZoomableImage from './ZoomableImage';
 import { compressImage } from '../utils/imageUtils';
@@ -32,6 +31,30 @@ export default function SeancesList({ patient }) {
     const [showAddForm, setShowAddForm] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [selectedSeance, setSelectedSeance] = useState(null);
+    const [hdImageUrl, setHdImageUrl] = useState(null);
+
+    // Effect to load HD image when seance is selected
+    useEffect(() => {
+        let url = null;
+        if (selectedSeance?.fileId) {
+            const loadHd = async () => {
+                try {
+                    const blob = await downloadFileContent(selectedSeance.fileId);
+                    url = URL.createObjectURL(blob);
+                    setHdImageUrl(url);
+                } catch (err) {
+                    console.error('Error loading HD image:', err);
+                }
+            };
+            loadHd();
+        } else {
+            setHdImageUrl(null);
+        }
+
+        return () => {
+            if (url) URL.revokeObjectURL(url);
+        };
+    }, [selectedSeance]);
 
     useEffect(() => {
         if (patient) {
@@ -195,16 +218,23 @@ export default function SeancesList({ patient }) {
                                 }}
                             >
                                 <ZoomableImage
-                                    src={selectedSeance.thumbnailLink || getFileUrl(selectedSeance.fileId)}
+                                    src={hdImageUrl || selectedSeance.thumbnailLink || getFileUrl(selectedSeance.fileId)}
                                     alt={selectedSeance.fileName}
                                     style={{
                                         width: '100%',
                                         maxWidth: '700px',
                                         maxHeight: '80vh',
                                         objectFit: 'contain',
-                                        borderRadius: 'var(--radius-sm)'
+                                        borderRadius: 'var(--radius-sm)',
+                                        opacity: hdImageUrl ? 1 : 0.6,
+                                        transition: 'opacity 0.3s ease'
                                     }}
                                 />
+                                {!hdImageUrl && (
+                                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+                                        <div className="spinner" style={{ width: '30px', height: '30px' }} />
+                                    </div>
+                                )}
                             </div>
                             {selectedSeance.webViewLink && (
                                 <button
