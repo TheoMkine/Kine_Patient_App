@@ -29,12 +29,20 @@ export default function PatientList({ onSelectPatient }) {
         setSyncing(true);
         try {
             // 1. Resolve folder IDs
+            console.log('Sync: Starting with DRIVE_FOLDER_ID:', DRIVE_FOLDER_ID || 'root');
             const rootId = await findOrCreateFolder(ROOT_FOLDER_NAME, DRIVE_FOLDER_ID || 'root');
+            console.log('Sync: rootId (KINE_APP):', rootId);
             const patientsFolderId = await findOrCreateFolder(PATIENTS_FOLDER_NAME, rootId);
+            console.log('Sync: patientsFolderId:', patientsFolderId);
 
             // 2. List folders in Drive
             const folders = await listSubFolders(patientsFolderId);
-            if (!folders.length) return;
+            console.log(`Sync: Found ${folders.length} folders in Patients folder:`, folders.map(f => f.name));
+
+            if (!folders.length) {
+                console.log('Sync: No folders found. Exiting sync.');
+                return;
+            }
 
             // 3. Compare with local data
             const existingPatients = JSON.parse(localStorage.getItem('patients') || '[]');
@@ -56,15 +64,19 @@ export default function PatientList({ onSelectPatient }) {
                 );
 
                 if (!exists) {
-                    console.log(`Syncing new patient from Drive: ${prenom} ${nom}`);
+                    console.log(`Sync: New patient detected: ${folder.name}`);
 
                     // Fetch subfolder IDs
                     const subs = await listSubFolders(folder.id);
+                    console.log(`Sync: Subfolders for ${folder.name}:`, subs.map(s => s.name));
+
                     const bilansFolderId = subs.find(f => f.name === BILANS_FOLDER_NAME)?.id;
                     const seancesFolderId = subs.find(f => f.name === SEANCES_FOLDER_NAME)?.id;
 
                     if (seancesFolderId) {
+                        console.log(`Sync: Finding journal sheet for ${folder.name}...`);
                         const journalSheetId = await findJournalSheet(seancesFolderId);
+                        console.log(`Sync: journalSheetId for ${folder.name}:`, journalSheetId);
 
                         const newPatient = {
                             id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
@@ -80,6 +92,8 @@ export default function PatientList({ onSelectPatient }) {
 
                         updatedList.push(newPatient);
                         hasChanges = true;
+                    } else {
+                        console.warn(`Sync: Missing Seances folder for ${folder.name}`);
                     }
                 }
             }
