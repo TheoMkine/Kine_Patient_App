@@ -105,11 +105,8 @@ function AddBilanForm({ patient, onClose, onBilanAdded }) {
             // Upload all photos and generate thumbnails in parallel
             const results = await Promise.all(
                 photos.map(async (file, index) => {
-                    // Compress original image for Drive
-                    const compressedFile = await compressImage(file, 1600, 0.75);
-
                     const uploadRes = await uploadFileToDrive(
-                        compressedFile,
+                        file,
                         patient.bilansFolderId,
                         `${fileNameBase}_${index + 1}.jpg`,
                     );

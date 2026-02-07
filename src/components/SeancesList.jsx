@@ -301,12 +301,8 @@ function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
             // 1. Handle Photo Upload if changed or new
             if (photo) {
                 fileName = generateDateFilename('jpg');
-
-                // Compress original image for Drive (reduces quota usage)
-                const compressedPhoto = await compressImage(photo, 1600, 0.75);
-
                 const [uploadResult] = await Promise.all([
-                    uploadFileToDrive(compressedPhoto, patient.seancesFolderId, fileName)
+                    uploadFileToDrive(photo, patient.seancesFolderId, fileName)
                 ]);
                 fileId = uploadResult?.id;
             }
