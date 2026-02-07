@@ -385,15 +385,47 @@ export default function BilansList({ patient }) {
                 };
             }).filter((b) => b.files.length > 0);
 
-            // 2. Fichiers orphelins (anciens bilans, 1 fichier = 1 bilan sans titre)
-            const orphanBilans = files
-                .filter((f) => !usedFileIds.has(f.id))
-                .map((file) => ({
-                    id: file.id,
-                    title: '',
-                    createdAt: file.createdTime,
-                    files: [enrichFile(file)],
-                }));
+            // 2. Fichiers orphelins (anciens bilans ou synchro multi-appareils)
+            // On essaie de regrouper les fichiers orphelins par leur pattern de nom : DD_MM_YYYY_Titre_Index.webp
+            const orphanFiles = files.filter((f) => !usedFileIds.has(f.id));
+            const groupedOrphans = new Map();
+
+            orphanFiles.forEach(file => {
+                // Pattern attendu : 07_02_2026_titre-bilan_1.webp
+                const nameParts = file.name.replace(/\.[^/.]+$/, "").split('_');
+
+                // Si le nom ressemble à notre pattern (au moins Date + Titre + Index)
+                if (nameParts.length >= 4) {
+                    const datePart = `${nameParts[0]}_${nameParts[1]}_${nameParts[2]}`;
+                    const index = nameParts[nameParts.length - 1];
+                    const titlePart = nameParts.slice(3, -1).join('_');
+                    const groupKey = `${datePart}_${titlePart}`;
+
+                    if (!groupedOrphans.has(groupKey)) {
+                        groupedOrphans.set(groupKey, {
+                            title: titlePart.replace(/-/g, ' '),
+                            files: [],
+                            date: file.createdTime
+                        });
+                    }
+                    groupedOrphans.get(groupKey).files.push(enrichFile(file));
+                } else {
+                    // Fichier vraiment isolé ou ancien format
+                    const groupKey = `isolated_${file.id}`;
+                    groupedOrphans.set(groupKey, {
+                        title: file.name.split('.')[0],
+                        files: [enrichFile(file)],
+                        date: file.createdTime
+                    });
+                }
+            });
+
+            const orphanBilans = Array.from(groupedOrphans.values()).map((group, index) => ({
+                id: `orphan_${index}`,
+                title: group.title,
+                createdAt: group.date,
+                files: group.files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
+            }));
 
             const allBilans = [...metaBilans, ...orphanBilans].sort(
                 (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
