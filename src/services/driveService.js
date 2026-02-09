@@ -50,7 +50,7 @@ export const findOrCreateFolder = async (folderName, parentId) => {
                 if (parentInfo.name === folderName &&
                     parentInfo.mimeType === 'application/vnd.google-apps.folder' &&
                     !parentInfo.trashed) {
-                    console.log(`Sync: Folder '${folderName}' already exists at ID: ${parentId}`);
+                    // console.log(`Sync: Folder '${folderName}' already exists at ID: ${parentId}`);
                     return parentId;
                 }
             } catch (e) {
@@ -163,48 +163,49 @@ export const compressImage = async (file, maxWidth = 1600, quality = 0.75) => {
     if (!file.type.startsWith('image/')) return file;
 
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.src = url;
 
-                // Resize if too large
-                if (width > maxWidth) {
-                    height = (maxWidth / width) * height;
-                    width = maxWidth;
-                }
+        img.onload = () => {
+            URL.revokeObjectURL(url); // Clean up immediately after loading into Image
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
 
-                canvas.width = width;
-                canvas.height = height;
+            // Resize if too large
+            if (width > maxWidth) {
+                height = (maxWidth / width) * height;
+                width = maxWidth;
+            }
 
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
+            canvas.width = width;
+            canvas.height = height;
 
-                canvas.toBlob(
-                    (blob) => {
-                        if (!blob) {
-                            reject(new Error('Canvas to Blob failed'));
-                            return;
-                        }
-                        // Return as a File object to preserve name or use a default
-                        const optimizedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
-                            type: 'image/webp',
-                            lastModified: Date.now()
-                        });
-                        resolve(optimizedFile);
-                    },
-                    'image/webp',
-                    quality
-                );
-            };
-            img.onerror = (err) => reject(err);
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            canvas.toBlob(
+                (blob) => {
+                    if (!blob) {
+                        reject(new Error('Canvas to Blob failed'));
+                        return;
+                    }
+                    // Return as a File object to preserve name or use a default
+                    const optimizedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+                        type: 'image/webp',
+                        lastModified: Date.now()
+                    });
+                    resolve(optimizedFile);
+                },
+                'image/webp',
+                quality
+            );
         };
-        reader.onerror = (err) => reject(err);
+        img.onerror = (err) => {
+            URL.revokeObjectURL(url);
+            reject(err);
+        };
     });
 };
 
@@ -214,9 +215,9 @@ export const uploadFileToDrive = async (file, folderId, fileName = null) => {
         // Automatically compress if it's an image
         let fileToUpload = file;
         if (file.type.startsWith('image/')) {
-            console.log(`Optimizing image: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+            // console.log(`Optimizing image: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
             fileToUpload = await compressImage(file);
-            console.log(`Optimized size: ${(fileToUpload.size / 1024).toFixed(2)} KB`);
+            // console.log(`Optimized size: ${(fileToUpload.size / 1024).toFixed(2)} KB`);
             // Use the new webp extension if fileName was provided with .jpg or other
             if (fileName) {
                 fileName = fileName.replace(/\.[^/.]+$/, "") + ".webp";

@@ -5,23 +5,23 @@ import ZoomableImage from './ZoomableImage';
 
 const createImagePreview = (file, maxWidth = 800) => {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            const img = new Image();
-            img.onload = () => {
-                const scale = Math.min(1, maxWidth / img.width);
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width * scale;
-                canvas.height = img.height * scale;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL('image/jpeg', 0.8));
-            };
-            img.onerror = reject;
-            img.src = reader.result;
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            const scale = Math.min(1, maxWidth / img.width);
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
         };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+        img.onerror = (err) => {
+            URL.revokeObjectURL(url);
+            reject(err);
+        };
+        img.src = url;
     });
 };
 
@@ -281,11 +281,10 @@ function SeanceForm({ patient, onClose, onSeanceAdded, editData = null }) {
         const file = e.target.files?.[0];
         if (file) {
             setPhoto(file);
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setPhotoPreview(reader.result);
-            };
-            reader.readAsDataURL(file);
+            const url = URL.createObjectURL(file);
+            setPhotoPreview(url);
+            // Note: In a real app, we'd revoke this URL when the component unmounts 
+            // or when a new photo is selected. For simplicity here, we'll keep it.
         }
     };
 

@@ -78,23 +78,23 @@ function HdZoomableImage({ fileId, thumbnailLink, alt, style }) {
 
 const createImagePreview = (file, maxWidth = 800) => {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            const img = new Image();
-            img.onload = () => {
-                const scale = Math.min(1, maxWidth / img.width);
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width * scale;
-                canvas.height = img.height * scale;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL('image/jpeg', 0.8));
-            };
-            img.onerror = reject;
-            img.src = reader.result;
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            const scale = Math.min(1, maxWidth / img.width);
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
         };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+        img.onerror = (err) => {
+            URL.revokeObjectURL(url);
+            reject(err);
+        };
+        img.src = url;
     });
 };
 
@@ -142,17 +142,17 @@ function AddBilanForm({ patient, onClose, onBilanAdded }) {
             const safeTitle = sanitizeTitleForFileName(title) || 'bilan';
             const fileNameBase = `${dateName}_${safeTitle}`;
 
-            // Upload all photos and generate thumbnails in parallel
-            const results = await Promise.all(
-                photos.map(async (file, index) => {
-                    const uploadRes = await uploadFileToDrive(
-                        file,
-                        patient.bilansFolderId,
-                        `${fileNameBase}_${index + 1}.webp`,
-                    );
-                    return { uploadRes };
-                }),
-            );
+            // Upload photos sequentially to avoid memory spikes on mobile
+            const results = [];
+            for (let i = 0; i < photos.length; i++) {
+                const file = photos[i];
+                const uploadRes = await uploadFileToDrive(
+                    file,
+                    patient.bilansFolderId,
+                    `${fileNameBase}_${i + 1}.webp`,
+                );
+                results.push({ uploadRes });
+            }
 
             // Save meta
             const existing = getBilansMeta(patient.id);
